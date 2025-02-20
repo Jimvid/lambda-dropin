@@ -1,10 +1,12 @@
 package main
 
 import (
+	// "github.com/aws/aws-cdk-go/awscdk/awsiam"
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsapigateway"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsdynamodb"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awssecretsmanager"
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
 )
@@ -22,6 +24,9 @@ func NewLambdaDropin(scope constructs.Construct, id string, props *GolangAwsStac
 
 	stack := awscdk.NewStack(scope, &id, &sprops)
 
+	// Secret from secretsmanager
+	secret := awssecretsmanager.Secret_FromSecretNameV2(stack, jsii.String("jwtTokenSecret"), jsii.String("lambdadropin/jwt-secret"))
+
 	// DynamoDB table
 	table := awsdynamodb.NewTable(stack, jsii.String("userTable"), &awsdynamodb.TableProps{
 		PartitionKey: &awsdynamodb.Attribute{
@@ -32,10 +37,13 @@ func NewLambdaDropin(scope constructs.Construct, id string, props *GolangAwsStac
 	})
 
 	// Lambda functions
-	myFunction := awslambda.NewFunction(stack, jsii.String("userFunction"), &awslambda.FunctionProps{
+	userFunction := awslambda.NewFunction(stack, jsii.String("userFunction"), &awslambda.FunctionProps{
 		Runtime: awslambda.Runtime_PROVIDED_AL2023(),
 		Code:    awslambda.AssetCode_FromAsset(jsii.String("../cmd/user/function.zip"), nil),
 		Handler: jsii.String("main"),
+		Environment: &map[string]*string{
+			"SECRET_ARN": secret.SecretArn(),
+		},
 	})
 
 	// API Gateway
@@ -51,10 +59,12 @@ func NewLambdaDropin(scope constructs.Construct, id string, props *GolangAwsStac
 		},
 	})
 
-	// Grant function access to write/read to table
-	table.GrantReadWriteData(myFunction)
+	// Grant function access
+	table.GrantReadWriteData(userFunction)
+	secret.GrantRead(userFunction, nil)
 
-	integration := awsapigateway.NewLambdaIntegration(myFunction, nil)
+	// Integration
+	integration := awsapigateway.NewLambdaIntegration(userFunction, nil)
 
 	// Register resource
 	registerResource := api.Root().AddResource(jsii.String("register"), nil)

@@ -4,6 +4,9 @@ build:
 
 diff:
 	@cd infrastructure && cdk diff
+	
+synth:
+	@cd infrastructure && cdk synth
 
 deploy:
 	@cd infrastructure && cdk deploy
